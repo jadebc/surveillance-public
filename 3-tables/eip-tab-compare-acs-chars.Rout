@@ -1,0 +1,80 @@
+
+R version 3.6.1 (2019-07-05) -- "Action of the Toes"
+Copyright (C) 2019 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+[Previously saved workspace restored]
+
+> ##########################################
+> # Shoo the Flu evaluation
+> # Surveillance analysis
+> 
+> # Import and clean ACS 3-year 2013 data
+> # Subset by zip code
+> # To compare demographics by zip code
+> ##########################################
+> rm(list=ls())
+> 
+> # Formula for converting MOEs to confidence interval of proportion
+> # https://www.census.gov/content/dam/Census/library/publications/2018/acs/acs_general_handbook_2018_ch08.pdf
+> 
+> prop_ci = function(n, N, moe_n, moe_N){
++   if(is.factor(n)) n = as.numeric(as.character(n))
++   if(is.factor(N)) N = as.numeric(as.character(N))
++   if(is.factor(moe_n)) moe_n = as.numeric(as.character(moe_n))
++   if(is.factor(moe_N)) moe_N = as.numeric(as.character(moe_N))
++   
++   p = n/N
++   moe_p = (1/N)*sqrt(moe_n^2 - (p^2 * moe_N^2))
++   se = (moe_p / 1.9645)
++   lb = p - se*qnorm(0.975)
++   ub = p + se*qnorm(0.975)
++   return(list(est = p*100, lb = lb*100, ub = ub*100))
++ }
+> 
+> 
+> process_percent = function(data, label){
++   data %>%
++     mutate(est = as.numeric(as.character(est)),
++            moe = as.numeric(as.character(moe))) %>%
++     mutate(lb = est - (moe/1.645)*qnorm(0.975),
++            ub = est + (moe/1.645)*qnorm(0.975)) %>%
++     mutate(category  = label) %>%
++     select(category, dist, est, lb, ub)
++ }
+> 
+> #----------------------------------------
+> # Educational attainment
+> #----------------------------------------
+> edu=read.csv("~/Dropbox/Flu/Surveillance/Census/ACS demographics/3-year district subset/education/ACS_13_3YR_S1501_with_ann.csv",header=TRUE)
+> 
+> # these estimates are read in as percentages with a 90% CI MOE
+> 
+> # keep columns with relevant data
+> edu.cols=c("GEO.display.label",
++            "HC01_EST_VC02","HC01_MOE_VC02",
++            "HC01_EST_VC03","HC01_MOE_VC03",
++            "HC01_EST_VC04","HC01_MOE_VC04",
++            "HC01_EST_VC05","HC01_MOE_VC05")
+> 
+> edu_sub_cols = edu[,colnames(edu) %in% edu.cols]
+> edu_sub_rows = edu_sub_cols %>% filter(`GEO.display.label` %in% 
++         c("Oakland Unified School District, California",
++           "West Contra Costa Unified School District, California"))
+Error in edu_sub_cols %>% filter(GEO.display.label %in% c("Oakland Unified School District, California",  : 
+  could not find function "%>%"
+Execution halted

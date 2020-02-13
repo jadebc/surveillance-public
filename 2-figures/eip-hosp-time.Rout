@@ -1,0 +1,326 @@
+
+R version 3.6.1 (2019-07-05) -- "Action of the Toes"
+Copyright (C) 2019 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+[Previously saved workspace restored]
+
+> ##########################################
+> # Shoo the Flu evaluation
+> # Surveillance analysis
+> 
+> # Weekly incidence of flu hospitalization
+> ##########################################
+> rm(list=ls())
+> source(here::here("0-config.R"))
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+
+Attaching package: ‘zoo’
+
+The following objects are masked from ‘package:base’:
+
+    as.Date, as.Date.numeric
+
+
+Attaching package: ‘gridExtra’
+
+The following object is masked from ‘package:dplyr’:
+
+    combine
+
+── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──
+✔ tibble  2.1.3     ✔ purrr   0.3.3
+✔ tidyr   1.0.0     ✔ stringr 1.4.0
+✔ readr   1.3.1     ✔ forcats 0.4.0
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ gridExtra::combine() masks dplyr::combine()
+✖ dplyr::filter()      masks stats::filter()
+✖ tibble::has_name()   masks assertthat::has_name()
+✖ dplyr::lag()         masks stats::lag()
+
+Attaching package: ‘lubridate’
+
+The following object is masked from ‘package:base’:
+
+    date
+
+
+Attaching package: ‘scales’
+
+The following object is masked from ‘package:purrr’:
+
+    discard
+
+The following object is masked from ‘package:readr’:
+
+    col_factor
+
+here() starts at /Users/jadederong/Documents/CRG/flu/surveillance
+
+Attaching package: ‘here’
+
+The following object is masked from ‘package:lubridate’:
+
+    here
+
+> 
+> # load CEIP datasets
+> flu = readRDS(paste0(data_dir, "ceip-flu-clean.RDS"))
+> 
+> # load census data
+> census = readRDS(paste0(clean_census_dir, "Censpop-agecat-sex-race-zip.RDS"))
+> 
+> # subset to flu positive cases
+> flu=subset(flu,flu$flupos==1)
+> 
+> # clean date
+> flu$testdate=as.Date(paste0(flu$month, "/", flu$day, "/", flu$year),format="%m/%d/%Y")
+> 
+> # add week and year variable
+> flu$week=week(flu$testdate)
+> 
+> # add pre during program
+> flu$pre=ifelse(flu$flusesn<=1314,"Pre-intervention","During intervention")
+> flu$pre=factor(flu$pre,levels=c("Pre-intervention","During intervention"))
+> 
+> # recoding unknown race to be other to merge with cens
+> flu$race[flu$race=="Unknown"]="Other"
+> 
+> #--------------------------------------
+> # aggregate flu data by season and district
+> #--------------------------------------
+> # flu.all=aggregate(flu$flupos,list(dist=flu$dist,year=flu$year,pre=flu$pre,week=flu$week),sum)
+> 
+> flu_tot = flu %>%
++   group_by(dist, flusesn, year, pre, week) %>%
++   summarise(flupos = sum(flupos)) %>%
++   rename(seas = flusesn)
+> 
+> #--------------------------------------
+> # aggregate census data by season and district
+> #--------------------------------------
+> census_clean = prep_census(data = census, 
++                            covariates = c("agecat", "sex", "race"), 
++                            season_list = c(0809, 0910, 1011, 1112, 1213, 1314, 1415, 1516, 1617, 1718))
+> 
+> census_tot = census_clean %>%
++   group_by(dist, seas) %>%
++   summarise(N = sum(N))
+> 
+> #--------------------------------------
+> # merge numerator and denominator
+> #--------------------------------------
+> # flu.all.merge=merge(flu.all,cens.all,by=c("dist"))
+> flu.all.merge=full_join(flu_tot, census_tot,by=c("dist", "seas"))
+Warning message:
+Column `dist` joining character vector and factor, coercing into character vector 
+> 
+> #--------------------------------------
+> # calculate rates and CIs
+> #--------------------------------------
+> flu.all.merge$rate=(flu.all.merge$flupos/flu.all.merge$N)*100000
+> flu.all.merge = flu.all.merge %>% arrange(year, week, dist)
+> 
+> plot.data = flu.all.merge
+> plot.data$date = as.Date(paste(plot.data$year, plot.data$week, 1, sep="-"), "%Y-%U-%u")
+> 
+> plot.data = plot.data %>% filter(date < as.Date("07-01-2018", format = "%m-%d-%Y"))
+> 
+> plot.data = plot.data %>%
++   mutate(dist_f = case_when(
++     dist == "OUSD" ~ "Intervention",
++     dist == "WCCUSD" ~ "Comparison"
++   )) %>%
++   mutate(dist_f = factor(dist_f, levels = c("Intervention", "Comparison")))
+> 
+> 
+> # Change rates in summer months to N/A values to create breaks in the figure
+> summer_months = c(06, 07, 08, 09)
+> 
+> ### Create month and year columns for easier data manipulation
+> plot.data = plot.data %>% mutate(mon = month(date)) %>% mutate(yr = year(date))
+> 
+> ### For existing data in summer months, set rate to N/A
+> plot.data = plot.data %>% mutate(rate = replace(rate, month(date) %in% summer_months, NA))
+> 
+> ### For data without points in summer months, create a new row in June and September for the year and set rate to NA
+> for (year in unique(plot.data$yr)){
++   for (tr_group in unique(plot.data$dist_f)){
++     for (season in unique(plot.data$seas)){
++       new_row1 = list(NA,season,year,NA,NA,NA,NA,NA, as.Date(paste(year, "-06-01", sep="")), tr_group, 6, 2010)
++       new_row2 = list(NA,season,year,NA,NA,NA,NA,NA, as.Date(paste(year, "-09-01", sep="")), tr_group, 6, 2010)
++       names(new_row1) = colnames(plot.data)
++       names(new_row2) = colnames(plot.data)
++       plot.data = rbind(plot.data, new_row1)
++       plot.data = rbind(plot.data, new_row2)
++     }
++   }
++ }
+There were 50 or more warnings (use warnings() to see the first 50)
+> 
+> # -----------------------------------------
+> # Plot from 2008-2018
+> # -----------------------------------------
+> 
+> g1 = ggplot(plot.data,aes(x=date,y=rate)) +
++   
++   
++   # Basic plot with x and y labels
++   geom_line(aes(col=dist_f), na.rm = T) +
++   ylab("Incidence of influenza\n hospitalization (per 100,000)") +
++   xlab("") +
++   
++   # Scale x-axis and y-axis
++   scale_x_date(labels = date_format("%b"), date_breaks = "2 months") +
++   coord_cartesian(ylim = c(0, 25), expand = FALSE) +
++   
++   # Define colors
++   scale_color_manual("District",values=c("#2185c5","#ff9715"))+
++   
++   # Text annotations for program period & x-axis years
++   annotate(geom = "text", 
++            x = c(as.Date("02-01-2009", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2010", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2011", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2012", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2013", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2014", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2015", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2016", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2017", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2018", format = "%m-%d-%Y")), 
++            y = -3, 
++            label = c("2008-09","2009-10","2010-11","2011-12","2012-13",
++                      "2013-14","2014-15","2015-16","2016-17","2017-18"), 
++            size = 4) +
++   
++   # Label program period
++   annotate(geom="text", x=as.Date("07-01-2011", format = "%m-%d-%Y"), y=24,label="Pre-intervention period")+
++   
++   annotate(geom="text", x=as.Date("7-01-2016", format = "%m-%d-%Y"), y=24,label="Intervention period")+
++   
++   # Add vertical line
++   geom_vline(xintercept=as.Date("07-01-2014", format = "%m-%d-%Y"), linetype="dashed")+
++   
++   # Add minimalist theme
++   theme_bw()+
++   theme(axis.title.x = element_text(margin = margin(t = 5, r = 5, b = 5, l = 5)),
++         axis.text.x = element_text(vjust = 0.25),
++         plot.margin = margin(3, 3, 10, 3, "pt"),
++           legend.position=c(0.055,0.82),
++         legend.background = element_rect(color = "black", 
++                size = 0.25, linetype = "solid"),
++         plot.title = element_text(hjust = 0.5))
+> 
+> # remove clipping of x axis labels
+> g2 <- ggplot_gtable(ggplot_build(g1))
+> g2$layout$clip[g2$layout$name == "panel"] <- "off"
+> grid::grid.draw(g2)
+> 
+> ggsave(g2, file=paste0(fig_dir,"flu_hosprate_week_allpre.pdf"),
++        width=15,height=4)
+> 
+> rm(g1, g2)
+> 
+> # -----------------------------------------
+> # Plot from 2011-2018
+> # -----------------------------------------
+> plot.data.1118 = plot.data %>% filter(seas >= 1112) %>% filter(year >= 2011) 
+> 
+> # impute missings for outside flu season
+> # weeks 19-39
+> x = c(as.Date("2011-04-30") + 7*seq(1,20))
+> 
+> # why are weeks 40-48 missing from 2012?
+>   
+> g3 = ggplot(plot.data.1118,aes(x=date,y=rate)) +
++   
++   # Basic plot with x and y labels
++   geom_line(aes(col=dist_f)) +
++   ylab("Incidence of influenza hospitalization\n(per 100,000)") +
++   xlab("") +
++   
++   # Scale x-axis and y-axis
++   scale_x_date(labels = date_format("%b"), date_breaks = "2 months") +
++   coord_cartesian(ylim = c(0, 30), expand = FALSE) +
++   # scale_y_continuous(limits = c(0,30), breaks = seq(0,30,5),
++   #                    labels = seq(0,30,5), expand = FALSE) +
++   
++   # Define colors
++   scale_color_manual("District",values=c("#2185c5","#ff9715"))+
++   
++   # Text annotations for program period & x-axis years
++   annotate(geom = "text", 
++            x = c(
++                  as.Date("02-01-2012", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2013", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2014", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2015", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2016", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2017", format = "%m-%d-%Y"), 
++                  as.Date("02-01-2018", format = "%m-%d-%Y")), 
++            y = -3, 
++            label = c("2011-12","2012-13",
++                      "2013-14","2014-15","2015-16","2016-17","2017-18"), 
++            size = 4) +
++   
++   # Label program period
++   annotate(geom="text", x=as.Date("2-25-2013", format = "%m-%d-%Y"), y=28,label="Pre-intervention period", size = 5)+
++   
++   annotate(geom="text", x=as.Date("7-01-2015", format = "%m-%d-%Y"), y=28,label="Intervention period", size = 5)+
++   annotate(geom="text", x=as.Date("7-01-2015", format = "%m-%d-%Y"), y=26,label="(Ineffective vaccine)")+
++ 
++   annotate(geom="text", x=as.Date("7-01-2017", format = "%m-%d-%Y"), y=28,label="Intervention period", size = 5)+
++   annotate(geom="text", x=as.Date("7-01-2017", format = "%m-%d-%Y"), y=26,label="(Moderately effective vaccine)")+
++   
++   # Add vertical lines
++   geom_vline(xintercept=as.Date("07-01-2014", format = "%m-%d-%Y"), linetype="dashed")+
++   geom_vline(xintercept=as.Date("07-01-2016", format = "%m-%d-%Y"), linetype="dashed")+
++   
++   # Add minimalist theme
++   theme_bw()+
++   theme(axis.title.x = element_text(margin = margin(t = 5, r = 5, b = 5, l = 5)),
++         axis.text.x = element_text(vjust = 0.25),
++         plot.margin = margin(t = 3, r = 10, b = 18, l = 3, "pt"),
++         legend.position=c(0.055,0.84),
++         legend.background = element_rect(color = "black", 
++                                          size = 0.25, linetype = "solid"),
++         plot.title = element_text(hjust = 0.5))
+> 
+> # remove clipping of x axis labels
+> g4 <- ggplot_gtable(ggplot_build(g3))
+Warning message:
+Removed 56 rows containing missing values (geom_path). 
+> g4$layout$clip[g4$layout$name == "panel"] <- "off"
+> grid::grid.draw(g4)
+> 
+> ggsave(g4, file=paste0(fig_dir,"flu_hosprate_week.pdf"),
++        width=12,height=4)
+> 
+> proc.time()
+   user  system elapsed 
+  2.145   0.142   2.286 

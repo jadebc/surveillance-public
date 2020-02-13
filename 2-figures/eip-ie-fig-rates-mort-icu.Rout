@@ -1,0 +1,193 @@
+
+R version 3.6.1 (2019-07-05) -- "Action of the Toes"
+Copyright (C) 2019 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+[Previously saved workspace restored]
+
+> ##########################################
+> # Shoo the Flu evaluation
+> # Surveillance analysis
+> 
+> # Figure with rates by district by year
+> # for ICU and mortality
+> ##########################################
+> rm(list=ls())
+> source(here::here("0-config.R"))
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+
+Attaching package: ‘zoo’
+
+The following objects are masked from ‘package:base’:
+
+    as.Date, as.Date.numeric
+
+
+Attaching package: ‘gridExtra’
+
+The following object is masked from ‘package:dplyr’:
+
+    combine
+
+── Attaching packages ─────────────────────────────────────── tidyverse 1.2.1 ──
+✔ tibble  2.1.3     ✔ purrr   0.3.2
+✔ tidyr   0.8.3     ✔ stringr 1.4.0
+✔ readr   1.3.1     ✔ forcats 0.4.0
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ gridExtra::combine() masks dplyr::combine()
+✖ dplyr::filter()      masks stats::filter()
+✖ tibble::has_name()   masks assertthat::has_name()
+✖ dplyr::lag()         masks stats::lag()
+
+Attaching package: ‘lubridate’
+
+The following object is masked from ‘package:base’:
+
+    date
+
+
+Attaching package: ‘scales’
+
+The following object is masked from ‘package:purrr’:
+
+    discard
+
+The following object is masked from ‘package:readr’:
+
+    col_factor
+
+here() starts at /Users/jadederong/Documents/CRG/flu/surveillance
+
+Attaching package: ‘here’
+
+The following object is masked from ‘package:lubridate’:
+
+    here
+
+> 
+> # Load data
+> icu_death = readRDS(paste0(data_dir, "ceip-icu_death-data-age-sex-zip.RDS"))
+> 
+> #----------------------------------------------------
+> # Obtain rates
+> #----------------------------------------------------
+> icu_table = icu_death %>% 
++   filter(seas>=1112) %>%
++   group_by(season, dist) %>%
++   summarise(icu = sum(icu),
++             pyears = sum(N)) %>%
++   mutate(tr = ifelse(dist == "OUSD", "Intervention", "Comparison"),
++          rate = icu/pyears * 100000, 
++          lb = binom.confint(icu, pyears,methods="wilson",type="central")$lower * 100000,
++          ub = binom.confint(icu, pyears,methods="wilson",type="central")$upper * 100000)
+> 
+> deaths_table = icu_death %>% group_by(season, dist) %>%
++   filter(seas>=1112) %>%
++   summarise(deaths = sum(deaths),
++             pyears = sum(N)) %>%
++   mutate(tr = ifelse(dist == "OUSD", "Intervention", "Comparison"),
++          rate = deaths/pyears * 100000, 
++          lb = binom.confint(deaths, pyears,methods="wilson",type="central")$lower * 100000,
++          ub = binom.confint(deaths, pyears,methods="wilson",type="central")$upper * 100000)
+> 
+> #----------------------------------------------------
+> # Make plots
+> #----------------------------------------------------
+> pdf(file=paste0(fig_dir, "flu_mort_to201718.pdf"),
++     onefile=TRUE,width=7,height=4)
+> ggplot(deaths_table)+
++   geom_point(aes(x=season,y=rate,col=tr),
++              position=position_dodge(width=0.3))+
++   geom_errorbar(aes(x=season,ymin=lb,ymax=ub,col=tr),
++                 width=0.1,position=position_dodge(width=0.3))+
++   ylab("Influenza mortality per 100,000")+xlab("Influenza season")+
++   scale_y_continuous(limits=c(0,8), breaks = seq(0,8,1),
++                      labels = seq(0,8,1))+
++   scale_colour_manual(name="",  values=c("#ff9715","#2185c5"))+
++   theme_complete_bw()+theme(legend.position="bottom") +
++   
++   # Label program period
++   annotate(geom="text", x = 2, y = 7.8,
++            label="Pre-intervention period", size = 4)+
++   
++   annotate(geom="text", x = 4.5, y = 7.8,
++            label="Intervention period", size = 4)+
++   
++   annotate(geom="text", x = 4.5, y = 7.25,
++            label="(Ineffective vaccine)", size = 3)+
++   
++   annotate(geom="text", x = 6.5, y = 7.8,
++            label="Intervention period", size = 4)+
++   
++   annotate(geom="text", x = 6.5, y = 7.25,
++            label="(Moderately effective vaccine)", size = 3)+
++   
++   geom_vline(xintercept = 3.5, linetype = "dashed")
+> dev.off()
+null device 
+          1 
+> 
+> 
+> pdf(file=paste0(fig_dir,"flu_icu_to201718.pdf"),
++     onefile=TRUE,width=7,height=4)
+> ggplot(icu_table)+
++   geom_point(aes(x=season,y=rate,col=tr),
++              position=position_dodge(width=0.3))+
++   geom_errorbar(aes(x=season,ymin=lb,ymax=ub,col=tr),
++                 width=0.1,position=position_dodge(width=0.3))+
++   ylab("Influenza ICU admissions per 100,000")+xlab("Influenza season")+
++   scale_colour_manual(name="",  values=c("#ff9715","#2185c5"))+
++   theme_complete_bw()+theme(legend.position="bottom") +
++   scale_y_continuous(limits = c(0,25), breaks = seq(0,25,5),
++                      labels = seq(0,25,5)) + 
++   
++   # Label program period
++   annotate(geom="text", x = 2, y = 24,
++            label="Pre-intervention period", size = 4)+
++   
++   annotate(geom="text", x = 4.5, y = 24,
++            label="Intervention period", size = 4)+
++   
++   annotate(geom="text", x = 4.5, y = 22,
++            label="(Ineffective vaccine)", size = 3)+
++   
++   annotate(geom="text", x = 6.5, y = 24,
++            label="Intervention period", size = 4)+
++   
++   annotate(geom="text", x = 6.5, y = 22,
++            label="(Moderately effective vaccine)", size = 3)+
++   
++   geom_vline(xintercept = 3.5, linetype = "dashed")
+>   
+> dev.off()
+null device 
+          1 
+> 
+> 
+> proc.time()
+   user  system elapsed 
+  1.335   0.097   1.426 

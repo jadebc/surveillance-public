@@ -1,0 +1,150 @@
+
+R version 3.6.1 (2019-07-05) -- "Action of the Toes"
+Copyright (C) 2019 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin15.6.0 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> ##########################################
+> # Shoo the Flu evaluation
+> # Surveillance analysis
+> 
+> # Analysis of Shoo the Flu indirect effects
+> # on flu hospitalization
+> 
+> # Table of relative scale difference-in-differences
+> ##########################################
+> rm(list=ls())
+> source(here::here("0-config.R"))
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+
+Attaching package: ‘zoo’
+
+The following objects are masked from ‘package:base’:
+
+    as.Date, as.Date.numeric
+
+
+Attaching package: ‘gridExtra’
+
+The following object is masked from ‘package:dplyr’:
+
+    combine
+
+── Attaching packages ─────────────────────────────────────── tidyverse 1.3.0 ──
+✔ tibble  2.1.3     ✔ purrr   0.3.3
+✔ tidyr   1.0.0     ✔ stringr 1.4.0
+✔ readr   1.3.1     ✔ forcats 0.4.0
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ gridExtra::combine() masks dplyr::combine()
+✖ dplyr::filter()      masks stats::filter()
+✖ tibble::has_name()   masks assertthat::has_name()
+✖ dplyr::lag()         masks stats::lag()
+
+Attaching package: ‘lubridate’
+
+The following object is masked from ‘package:base’:
+
+    date
+
+
+Attaching package: ‘scales’
+
+The following object is masked from ‘package:purrr’:
+
+    discard
+
+The following object is masked from ‘package:readr’:
+
+    col_factor
+
+here() starts at /Users/jadederong/Documents/CRG/flu/surveillance
+
+Attaching package: ‘here’
+
+The following object is masked from ‘package:lubridate’:
+
+    here
+
+> 
+> res = readRDS(paste0(res_dir, "flu_surv_differences.RDS"))
+> 
+> data = res %>%
++   filter(label=="Census data subset by zipcode (Primary)" &
++            covariates=="agecat, sex, race" &
++            parameter =="Relative difference-in-difference" & 
++            subset == "fluseasCDPH_2_5")  %>%
++   select(-c(label, parameter, subset))
+> 
+> # Clean estimate and CI
+> data = data %>% 
++   mutate(ptest = pt.est.ci.f(estimate, lb, ub, decimals=0, scale=1)) %>%
++   select(-c(estimate, se, lb, ub))
+> 
+> # Reshape long to wide
+> N = data %>% select(agecat, pyears) 
+> N = N[!duplicated(N),]
+> N_row = data.frame(seas = as.character("N"), 
++                    all = as.character(N$pyears[N$agecat=="all"]),
++                    eld = as.character(N$pyears[N$agecat=="eld"]),
++                    nonelem = as.character(N$pyears[N$agecat=="nonelem"]))
+> 
+> data_wide = dcast(data, seas ~ agecat, value.var = "ptest")
+> data_wide$seas = as.character(data_wide$seas)
+> 
+> pval_wide = dcast(data, seas ~ agecat, value.var = "pval")
+> pval_wide$seas = as.character(pval_wide$seas)
+> 
+> table = bind_rows(N_row, data_wide)
+Warning messages:
+1: In bind_rows_(x, .id) :
+  binding factor and character vector, coercing into character vector
+2: In bind_rows_(x, .id) :
+  binding character and factor vector, coercing into character vector
+3: In bind_rows_(x, .id) :
+  binding factor and character vector, coercing into character vector
+4: In bind_rows_(x, .id) :
+  binding character and factor vector, coercing into character vector
+5: In bind_rows_(x, .id) :
+  binding factor and character vector, coercing into character vector
+6: In bind_rows_(x, .id) :
+  binding character and factor vector, coercing into character vector
+7: In bind_rows_(x, .id) :
+  binding factor and character vector, coercing into character vector
+8: In bind_rows_(x, .id) :
+  binding character and factor vector, coercing into character vector
+> 
+> # Reorder columns
+> table = table[,c("seas", "nonelem", "eld", "all")]
+> table_out = cbind(table$seas, 
++                   table$nonelem, c(NA, pval_wide$nonelem),
++                   table$eld, c(NA, pval_wide$eld),
++                   table$all, c(NA, pval_wide$all))
+> 
+> write.csv(table_out, file = paste0(tab_dir, "fluhosp_table_rdid.csv"), row.names = FALSE)
+> 
+> proc.time()
+   user  system elapsed 
+  0.981   0.107   1.087 
